@@ -113,6 +113,15 @@ payment creation stay public — a portfolio demo that demands login is a demo n
 but destructive admin ops (`/demo/reset`) need the ADMIN role. No user table: the data model
 doesn't have one, so the single admin identity comes from env config, checked in constant time.
 
+### Verified end-to-end against the real broker before deploying
+Rather than debugging on Render, both services ran locally wired to the *production*
+dependencies — Neon Postgres and the CloudAMQP instance. A payment travelled
+API → signed webhook → CloudAMQP (TLS, amqps) → ledger-worker → Neon in ~6 s:
+`PENDING` → `COMPLETED`, balance moved exactly once, worker logs show the consume + post.
+Demo data was then reset through the authenticated admin flow so the seeded card references
+are stored encrypted (the Tier 1 rows had been plaintext). The cloud deploy is now just
+configuration, not a first integration test.
+
 ### AES-GCM at rest via AttributeConverter
 The card reference column is encrypted transparently: AES-256-GCM, fresh random 12-byte IV per
 value (IV reuse breaks GCM), 128-bit tag, stored as base64(IV‖ciphertext). The key is env-only
