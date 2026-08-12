@@ -1,0 +1,8 @@
+# Dev profile: in-memory H2 in PostgreSQL compatibility mode, so the API can
+# run on a machine without Docker or a local Postgres. Never used in prod.
+spring:
+  datasource:
+    url: jdbc:h2:mem:payflow;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
