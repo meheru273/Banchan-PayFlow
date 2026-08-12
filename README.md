@@ -40,7 +40,7 @@ a real payment system has.
 | Tier | Scope | State |
 |---|---|---|
 | 1 | REST API, PostgreSQL + Flyway, idempotent payment creation, RFC 7807 errors, Swagger, Docker, Render deploy | ✅ **live** (Render + Neon) |
-| 2 | JWT auth, HMAC-SHA256 webhooks, RabbitMQ + ledger-worker + DLQ, AES-GCM at rest | ✅ built, deploy pending |
+| 2 | JWT auth, HMAC-SHA256 webhooks, RabbitMQ + ledger-worker + DLQ, AES-GCM at rest | ✅ **live** (Render + CloudAMQP) |
 | 3 | Testcontainers + REST Assured + JaCoCo + CI badge, Next.js dashboard on Vercel | ⏳ not started |
 
 ## Run it locally
