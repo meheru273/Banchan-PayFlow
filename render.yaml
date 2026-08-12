@@ -1,0 +1,25 @@
+# PayFlow — Render Blueprint.
+# Deploy: Render Dashboard → New + → Blueprint → connect this repo.
+# DATABASE_* secrets are prompted on first deploy (point them at Neon);
+# they are never stored in git.
+services:
+  - type: web
+    name: payflow-api
+    runtime: docker
+    region: frankfurt
+    plan: free
+    branch: main
+    dockerfilePath: payment-service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      # Full JDBC URL, e.g. jdbc:postgresql://ep-xxx.eu-central-1.aws.neon.tech/payflow?sslmode=require
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USER
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      # Keep the JVM inside Render's 512 MB free instance.
+      - key: JAVA_OPTS
+        value: -XX:MaxRAMPercentage=75.0

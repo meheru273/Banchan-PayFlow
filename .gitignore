@@ -1,0 +1,13 @@
+target/
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.env
+*.log
+.DS_Store
+
+# Personal planning notes — not part of the public repo
+PLAN.md
