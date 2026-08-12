@@ -65,6 +65,16 @@ class PaymentFlowIntegrationTest {
     }
 
     @Test
+    void rootLeadsToSwaggerUi() {
+        // 302 when the client doesn't follow redirects, 200 when it does.
+        ResponseEntity<String> response = rest.getForEntity("/", String.class);
+        assertThat(response.getStatusCode().value()).isIn(200, 302);
+        if (response.getStatusCode().value() == 302) {
+            assertThat(response.getHeaders().getLocation().getPath()).isEqualTo("/swagger-ui.html");
+        }
+    }
+
+    @Test
     void fullPaymentFlowWithIdempotency() throws Exception {
         String walletId = firstWalletId();
         String key = "it-" + UUID.randomUUID();
