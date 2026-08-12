@@ -12,6 +12,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -46,6 +48,13 @@ public class PaymentService {
 
     public CreatePaymentResult create(String idempotencyKey, CreatePaymentRequest request) {
         String requestHash = hash(request);
+        // Fast path: a sequential replay finds the record without attempting the
+        // insert, keeping duplicate-key exceptions (and their ERROR log noise)
+        // out of the common case. The claim below still arbitrates true races.
+        Optional<IdempotencyRecord> existing = idempotencyService.find(idempotencyKey);
+        if (existing.isPresent()) {
+            return replay(existing.get(), requestHash);
+        }
         try {
             idempotencyService.claim(idempotencyKey, requestHash);
         } catch (DataIntegrityViolationException e) {
@@ -72,6 +81,11 @@ public class PaymentService {
         IdempotencyRecord record = idempotencyService.find(key)
                 .orElseThrow(() -> new IdempotencyConflictException(
                         "Concurrent request with Idempotency-Key '" + key + "' — retry shortly"));
+        return replay(record, requestHash);
+    }
+
+    private CreatePaymentResult replay(IdempotencyRecord record, String requestHash) {
+        String key = record.getKey();
         if (!record.getRequestHash().equals(requestHash)) {
             throw new IdempotencyConflictException(
                     "Idempotency-Key '" + key + "' was already used with a different request body");

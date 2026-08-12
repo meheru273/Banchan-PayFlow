@@ -59,8 +59,6 @@ class PaymentServiceIdempotencyTest {
     void replaysStoredResponseWhenKeyAndBodyMatch() throws Exception {
         IdempotencyRecord record = new IdempotencyRecord("key-1", hashOf(request));
         record.complete(201, "{\"id\":\"stored\"}");
-        doThrow(new DataIntegrityViolationException("duplicate"))
-                .when(idempotencyService).claim(anyString(), anyString());
         when(idempotencyService.find("key-1")).thenReturn(Optional.of(record));
 
         PaymentService.CreatePaymentResult result = paymentService.create("key-1", request);
@@ -69,14 +67,31 @@ class PaymentServiceIdempotencyTest {
         assertThat(result.statusCode()).isEqualTo(201);
         assertThat(result.bodyJson()).isEqualTo("{\"id\":\"stored\"}");
         verify(paymentProcessor, never()).process(any());
+        verify(idempotencyService, never()).claim(anyString(), anyString());
     }
 
     @Test
-    void rejectsSameKeyWithDifferentBody() throws Exception {
-        IdempotencyRecord record = new IdempotencyRecord("key-1", "a-different-hash");
-        record.complete(201, "{}");
+    void replaysWhenLosingTheClaimRace() throws Exception {
+        // First lookup misses, the claim insert collides, the second lookup replays.
+        IdempotencyRecord record = new IdempotencyRecord("key-1", hashOf(request));
+        record.complete(201, "{\"id\":\"stored\"}");
+        when(idempotencyService.find("key-1"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(record));
         doThrow(new DataIntegrityViolationException("duplicate"))
                 .when(idempotencyService).claim(anyString(), anyString());
+
+        PaymentService.CreatePaymentResult result = paymentService.create("key-1", request);
+
+        assertThat(result.replayed()).isTrue();
+        assertThat(result.bodyJson()).isEqualTo("{\"id\":\"stored\"}");
+        verify(paymentProcessor, never()).process(any());
+    }
+
+    @Test
+    void rejectsSameKeyWithDifferentBody() {
+        IdempotencyRecord record = new IdempotencyRecord("key-1", "a-different-hash");
+        record.complete(201, "{}");
         when(idempotencyService.find("key-1")).thenReturn(Optional.of(record));
 
         assertThatThrownBy(() -> paymentService.create("key-1", request))
@@ -88,8 +103,6 @@ class PaymentServiceIdempotencyTest {
     @Test
     void rejectsWhileOriginalRequestStillInFlight() throws Exception {
         IdempotencyRecord claimOnly = new IdempotencyRecord("key-1", hashOf(request));
-        doThrow(new DataIntegrityViolationException("duplicate"))
-                .when(idempotencyService).claim(anyString(), anyString());
         when(idempotencyService.find("key-1")).thenReturn(Optional.of(claimOnly));
 
         assertThatThrownBy(() -> paymentService.create("key-1", request))
@@ -99,6 +112,7 @@ class PaymentServiceIdempotencyTest {
 
     @Test
     void releasesClaimWhenExecutionFails() {
+        when(idempotencyService.find("key-1")).thenReturn(Optional.empty());
         when(paymentProcessor.process(any())).thenThrow(new IllegalStateException("boom"));
 
         assertThatThrownBy(() -> paymentService.create("key-1", request))
