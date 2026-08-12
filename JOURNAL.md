@@ -122,6 +122,17 @@ Demo data was then reset through the authenticated admin flow so the seeded card
 are stored encrypted (the Tier 1 rows had been plaintext). The cloud deploy is now just
 configuration, not a first integration test.
 
+### Deploying to Render: the missing-env-vars episode
+The first cloud deploy of the worker crash-looped with Hibernate's "Unable to determine
+Dialect without JDBC metadata" — the signature of a service booted without its `DATABASE_*`
+env vars (it was falling back to localhost). Diagnosed from outside using CloudAMQP's
+management API: `messages: 1, consumers: 0` proved the API side (webhook → publish) was
+working and the consumer side wasn't. The payoff moment: once the env vars were added and the
+worker connected, it **consumed the event that had been waiting durably in the queue and the
+stuck payment completed itself** — at-least-once delivery and idempotent posting doing exactly
+what they exist for. Tier 2 verified live end to end: PENDING → COMPLETED in ~8 s across two
+Render services, CloudAMQP and Neon.
+
 ### AES-GCM at rest via AttributeConverter
 The card reference column is encrypted transparently: AES-256-GCM, fresh random 12-byte IV per
 value (IV reuse breaks GCM), 128-bit tag, stored as base64(IV‖ciphertext). The key is env-only
