@@ -25,7 +25,9 @@ from the API process into `ledger-worker` behind RabbitMQ.*
 
 ## Live demo
 
-- **API + Swagger UI:** _coming with the first Render deploy_ (`/swagger-ui.html`)
+- **Swagger UI:** https://payflow-api-zkxz.onrender.com/swagger-ui.html
+- **API base:** https://payflow-api-zkxz.onrender.com — try `GET /api/v1/wallets`, then create a
+  payment against one of the wallet ids with any `Idempotency-Key`
 - ⚠️ The backend runs on a free tier that sleeps when idle — the **first request can take
   30–50 s** to wake it. That is the hosting plan, not the app.
 
@@ -33,7 +35,7 @@ from the API process into `ledger-worker` behind RabbitMQ.*
 
 | Tier | Scope | State |
 |---|---|---|
-| 1 | REST API, PostgreSQL + Flyway, idempotent payment creation, RFC 7807 errors, Swagger, Docker, Render deploy | ✅ built, deploy pending |
+| 1 | REST API, PostgreSQL + Flyway, idempotent payment creation, RFC 7807 errors, Swagger, Docker, Render deploy | ✅ **live** (Render + Neon) |
 | 2 | Spring Security + JWT, RabbitMQ ledger worker + DLQ, HMAC-SHA256 webhooks, AES-GCM at rest | ⏳ not started |
 | 3 | Testcontainers + REST Assured + JaCoCo + CI badge, Next.js dashboard on Vercel | ⏳ not started |
 
