@@ -1,10 +1,12 @@
 package com.payflow.payment.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.payflow.common.domain.IdempotencyRecord;
+import com.payflow.common.repo.PaymentRepository;
 import com.payflow.payment.api.dto.CreatePaymentRequest;
-import com.payflow.payment.domain.IdempotencyRecord;
+import com.payflow.payment.api.dto.PaymentResponse;
 import com.payflow.payment.error.IdempotencyConflictException;
-import com.payflow.payment.repo.PaymentRepository;
+import com.payflow.payment.provider.ProviderSimulator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,22 +40,40 @@ class PaymentServiceIdempotencyTest {
     @Mock
     private IdempotencyService idempotencyService;
 
+    @Mock
+    private ProviderSimulator providerSimulator;
+
     private PaymentService paymentService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final CreatePaymentRequest request =
             new CreatePaymentRequest(UUID.randomUUID(), new BigDecimal("42.50"), "GBP", null);
 
     @BeforeEach
     void setUp() {
         paymentService = new PaymentService(
-                paymentRepository, paymentProcessor, idempotencyService, objectMapper);
+                paymentRepository, paymentProcessor, idempotencyService, providerSimulator, objectMapper);
     }
 
     private String hashOf(CreatePaymentRequest req) throws Exception {
         byte[] canonical = objectMapper.writeValueAsBytes(req);
         var digest = java.security.MessageDigest.getInstance("SHA-256");
         return java.util.HexFormat.of().formatHex(digest.digest(canonical));
+    }
+
+    @Test
+    void freshCreateSchedulesTheSimulatedProvider() throws Exception {
+        when(idempotencyService.find("key-1")).thenReturn(Optional.empty());
+        UUID paymentId = UUID.randomUUID();
+        PaymentResponse pending = new PaymentResponse(
+                paymentId, request.walletId(), request.amount(), "GBP", "PENDING", "SIM-abc", Instant.now());
+        when(paymentProcessor.process(request)).thenReturn(pending);
+
+        PaymentService.CreatePaymentResult result = paymentService.create("key-1", request);
+
+        assertThat(result.replayed()).isFalse();
+        assertThat(result.statusCode()).isEqualTo(201);
+        verify(providerSimulator).scheduleCompletion(paymentId, "SIM-abc");
     }
 
     @Test
@@ -67,6 +88,7 @@ class PaymentServiceIdempotencyTest {
         assertThat(result.statusCode()).isEqualTo(201);
         assertThat(result.bodyJson()).isEqualTo("{\"id\":\"stored\"}");
         verify(paymentProcessor, never()).process(any());
+        verify(providerSimulator, never()).scheduleCompletion(any(), anyString());
         verify(idempotencyService, never()).claim(anyString(), anyString());
     }
 
@@ -119,5 +141,6 @@ class PaymentServiceIdempotencyTest {
                 .isInstanceOf(IllegalStateException.class);
 
         verify(idempotencyService).release("key-1");
+        verify(providerSimulator, never()).scheduleCompletion(any(), anyString());
     }
 }

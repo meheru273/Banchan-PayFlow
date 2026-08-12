@@ -2,22 +2,22 @@ package com.payflow.payment.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.payflow.common.domain.IdempotencyRecord;
+import com.payflow.common.repo.PaymentRepository;
 import com.payflow.payment.api.dto.CreatePaymentRequest;
 import com.payflow.payment.api.dto.PaymentResponse;
-import com.payflow.payment.domain.IdempotencyRecord;
 import com.payflow.payment.error.IdempotencyConflictException;
 import com.payflow.payment.error.ResourceNotFoundException;
-import com.payflow.payment.repo.PaymentRepository;
+import com.payflow.payment.provider.ProviderSimulator;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-
-import java.util.Optional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -31,15 +31,18 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentProcessor paymentProcessor;
     private final IdempotencyService idempotencyService;
+    private final ProviderSimulator providerSimulator;
     private final ObjectMapper objectMapper;
 
     public PaymentService(PaymentRepository paymentRepository,
                           PaymentProcessor paymentProcessor,
                           IdempotencyService idempotencyService,
+                          ProviderSimulator providerSimulator,
                           ObjectMapper objectMapper) {
         this.paymentRepository = paymentRepository;
         this.paymentProcessor = paymentProcessor;
         this.idempotencyService = idempotencyService;
+        this.providerSimulator = providerSimulator;
         this.objectMapper = objectMapper;
     }
 
@@ -64,6 +67,7 @@ public class PaymentService {
             PaymentResponse response = paymentProcessor.process(request);
             String body = toJson(response);
             idempotencyService.complete(idempotencyKey, HttpStatus.CREATED.value(), body);
+            providerSimulator.scheduleCompletion(response.id(), response.providerRef());
             return new CreatePaymentResult(HttpStatus.CREATED.value(), body, false, response.id());
         } catch (RuntimeException e) {
             idempotencyService.release(idempotencyKey);

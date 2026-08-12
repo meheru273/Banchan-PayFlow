@@ -1,10 +1,11 @@
 package com.payflow.payment.service;
 
+import com.payflow.common.ledger.LedgerPostingService;
+import com.payflow.common.repo.LedgerEntryRepository;
+import com.payflow.common.repo.WalletRepository;
 import com.payflow.payment.api.dto.TransactionResponse;
 import com.payflow.payment.api.dto.WalletResponse;
 import com.payflow.payment.error.ResourceNotFoundException;
-import com.payflow.payment.repo.LedgerEntryRepository;
-import com.payflow.payment.repo.WalletRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +26,7 @@ public class WalletService {
 
     /** Customer wallets only; the internal treasury wallet is not listed. */
     public List<WalletResponse> listWallets() {
-        return walletRepository.findByOwnerNotOrderByCreatedAtAsc(PaymentProcessor.TREASURY_OWNER)
+        return walletRepository.findByOwnerNotOrderByCreatedAtAsc(LedgerPostingService.TREASURY_OWNER)
                 .stream()
                 .map(WalletResponse::from)
                 .toList();

@@ -1,7 +1,29 @@
 # PayFlow — Render Blueprint.
 # Deploy: Render Dashboard → New + → Blueprint → connect this repo.
-# DATABASE_* secrets are prompted on first deploy (point them at Neon);
-# they are never stored in git.
+# sync:false secrets are prompted on first deploy (Neon + CloudAMQP values);
+# generateValue secrets are created once by Render and shared via the group.
+envVarGroups:
+  - name: payflow-shared
+    envVars:
+      # Full JDBC URL, e.g. jdbc:postgresql://ep-xxx.eu-west-2.aws.neon.tech/neondb?sslmode=require
+      # Use Neon's DIRECT endpoint (no "-pooler"): Flyway's advisory locks
+      # don't work through PgBouncer transaction pooling.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USER
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      # CloudAMQP AMQP URL, e.g. amqps://user:pass@host/vhost
+      - key: RABBITMQ_URL
+        sync: false
+      # Both services must decrypt the same column, so the key is shared.
+      - key: AES_ENCRYPTION_KEY
+        generateValue: true
+      # Keep the JVM inside Render's 512 MB free instances.
+      - key: JAVA_OPTS
+        value: -XX:MaxRAMPercentage=75.0
+
 services:
   - type: web
     name: payflow-api
@@ -13,13 +35,26 @@ services:
     dockerContext: .
     healthCheckPath: /health
     envVars:
-      # Full JDBC URL, e.g. jdbc:postgresql://ep-xxx.eu-central-1.aws.neon.tech/payflow?sslmode=require
-      - key: DATABASE_URL
+      - fromGroup: payflow-shared
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEBHOOK_HMAC_SECRET
+        generateValue: true
+      # Password for POST /api/v1/auth/login (username: admin by default)
+      - key: PAYFLOW_ADMIN_PASSWORD
         sync: false
-      - key: DATABASE_USER
-        sync: false
-      - key: DATABASE_PASSWORD
-        sync: false
-      # Keep the JVM inside Render's 512 MB free instance.
-      - key: JAVA_OPTS
-        value: -XX:MaxRAMPercentage=75.0
+
+  # Render's free tier has no Background Workers, so the ledger consumer runs
+  # as a web service whose /health satisfies the health check; its real job is
+  # the @RabbitListener on ledger.payment.completed.
+  - type: web
+    name: payflow-worker
+    runtime: docker
+    region: frankfurt
+    plan: free
+    branch: main
+    dockerfilePath: ledger-worker/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: payflow-shared

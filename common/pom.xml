@@ -12,5 +12,23 @@
 
   <artifactId>payflow-common</artifactId>
   <name>PayFlow Common</name>
-  <description>Shared DTOs, events and exceptions</description>
+  <description>Shared domain model, ledger posting, events and messaging topology</description>
+
+  <dependencies>
+    <!-- Library module: JPA entities/repositories and AMQP topology shared by
+         payment-service and ledger-worker, so the two can never drift apart. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 </project>

@@ -1,7 +1,7 @@
 package com.payflow.payment.service;
 
-import com.payflow.payment.domain.IdempotencyRecord;
-import com.payflow.payment.repo.IdempotencyRecordRepository;
+import com.payflow.common.domain.IdempotencyRecord;
+import com.payflow.common.repo.IdempotencyRecordRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;

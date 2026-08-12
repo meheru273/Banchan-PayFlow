@@ -5,12 +5,13 @@ WORKDIR /app
 COPY pom.xml .
 COPY common/pom.xml common/
 COPY payment-service/pom.xml payment-service/
+COPY ledger-worker/pom.xml ledger-worker/
 # Warm the dependency cache; tolerated to fail because go-offline cannot
 # resolve reactor-internal artifacts (payflow-common) before they are built.
 RUN mvn -B -q dependency:go-offline || true
 COPY common/src common/src
 COPY payment-service/src payment-service/src
-RUN mvn -B -q -DskipTests package
+RUN mvn -B -q -DskipTests -pl payment-service -am package
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
