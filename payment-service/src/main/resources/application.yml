@@ -9,6 +9,8 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  rabbitmq:
+    addresses: ${RABBITMQ_URL:amqp://guest:guest@localhost:5672}
 
 server:
   port: ${PORT:8080}
@@ -16,3 +18,25 @@ server:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+payflow:
+  messaging:
+    # false = post ledger entries in-process instead of via RabbitMQ
+    # (the no-broker dev mode; the dev profile turns this off).
+    enabled: ${MESSAGING_ENABLED:true}
+  security:
+    jwt-secret: ${JWT_SECRET:}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${JWT_REFRESH_TTL:7d}
+    admin-user: ${PAYFLOW_ADMIN_USER:admin}
+    admin-password: ${PAYFLOW_ADMIN_PASSWORD:}
+  webhook:
+    secret: ${WEBHOOK_HMAC_SECRET:}
+    tolerance: ${WEBHOOK_TOLERANCE:5m}
+  crypto:
+    aes-key: ${AES_ENCRYPTION_KEY:}
+  provider:
+    delay: ${PROVIDER_WEBHOOK_DELAY:1500ms}
+    # Where the simulated provider posts its signed webhook; defaults to this
+    # service's own local port.
+    webhook-url: ${PROVIDER_WEBHOOK_URL:}

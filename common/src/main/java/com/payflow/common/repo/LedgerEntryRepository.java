@@ -1,6 +1,6 @@
-package com.payflow.payment.repo;
+package com.payflow.common.repo;
 
-import com.payflow.payment.domain.LedgerEntry;
+import com.payflow.common.domain.LedgerEntry;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +12,8 @@ import java.util.UUID;
 public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, UUID> {
 
     List<LedgerEntry> findByWalletIdOrderByCreatedAtDesc(UUID walletId);
+
+    boolean existsByPaymentId(UUID paymentId);
 
     /**
      * Signed sum of a payment's entries (CREDIT positive, DEBIT negative).

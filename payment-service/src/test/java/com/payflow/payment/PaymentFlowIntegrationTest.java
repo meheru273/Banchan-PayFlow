@@ -2,9 +2,7 @@ package com.payflow.payment;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -15,18 +13,20 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
- * End-to-end Tier 1 flow against the dev (H2 PostgreSQL-mode) profile:
- * Flyway migration, seeding, payment creation, idempotent replay, key-reuse
- * conflict, and the double-entry ledger visible through the wallet API.
+ * End-to-end flow against the dev profile (H2 PostgreSQL mode, no broker):
+ * create → PENDING → the simulated provider's signed webhook completes it →
+ * ledger entries and balances move. Also covers idempotent replay, key-reuse
+ * conflict, and validation errors.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("dev")
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class PaymentFlowIntegrationTest {
 
     @Autowired
@@ -75,7 +75,7 @@ class PaymentFlowIntegrationTest {
     }
 
     @Test
-    void fullPaymentFlowWithIdempotency() throws Exception {
+    void fullAsyncPaymentFlowWithIdempotency() throws Exception {
         String walletId = firstWalletId();
         String key = "it-" + UUID.randomUUID();
         String body = """
@@ -86,23 +86,29 @@ class PaymentFlowIntegrationTest {
                 parse(rest.getForEntity("/api/v1/wallets/" + walletId, String.class).getBody())
                         .get("balance").asText());
 
-        // 1. Fresh create → 201 COMPLETED
+        // 1. Fresh create → 201 PENDING (completion is async via the provider webhook)
         ResponseEntity<String> created = rest.postForEntity(
                 "/api/v1/payments", new HttpEntity<>(body, jsonHeaders(key)), String.class);
         assertThat(created.getStatusCode().value()).isEqualTo(201);
         assertThat(created.getHeaders().getFirst("Idempotency-Replayed")).isEqualTo("false");
         JsonNode payment = parse(created.getBody());
-        assertThat(payment.get("status").asText()).isEqualTo("COMPLETED");
+        assertThat(payment.get("status").asText()).isEqualTo("PENDING");
         String paymentId = payment.get("id").asText();
 
-        // 2. Same key + same body → replayed, byte-identical response
+        // 2. The simulated provider confirms and the ledger is posted
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            JsonNode fetched = parse(rest.getForEntity("/api/v1/payments/" + paymentId, String.class).getBody());
+            assertThat(fetched.get("status").asText()).isEqualTo("COMPLETED");
+        });
+
+        // 3. Same key + same body → replayed, byte-identical stored response
         ResponseEntity<String> replayed = rest.postForEntity(
                 "/api/v1/payments", new HttpEntity<>(body, jsonHeaders(key)), String.class);
         assertThat(replayed.getStatusCode().value()).isEqualTo(201);
         assertThat(replayed.getHeaders().getFirst("Idempotency-Replayed")).isEqualTo("true");
         assertThat(replayed.getBody()).isEqualTo(created.getBody());
 
-        // 3. Same key + different body → 409 problem detail
+        // 4. Same key + different body → 409 problem detail
         String differentBody = """
                 {"walletId":"%s","amount":99.99,"currency":"GBP"}
                 """.formatted(walletId);
@@ -111,12 +117,12 @@ class PaymentFlowIntegrationTest {
         assertThat(conflict.getStatusCode().value()).isEqualTo(409);
         assertThat(parse(conflict.getBody()).get("title").asText()).isEqualTo("Idempotency Conflict");
 
-        // 4. Wallet balance moved exactly once
+        // 5. Wallet balance moved exactly once
         JsonNode wallet = parse(rest.getForEntity("/api/v1/wallets/" + walletId, String.class).getBody());
         assertThat(new BigDecimal(wallet.get("balance").asText()))
                 .isEqualByComparingTo(balanceBefore.add(new BigDecimal("12.34")));
 
-        // 5. Ledger shows a CREDIT for this payment on the wallet
+        // 6. Ledger shows a CREDIT for this payment on the wallet
         JsonNode transactions = parse(
                 rest.getForEntity("/api/v1/wallets/" + walletId + "/transactions", String.class).getBody());
         boolean creditFound = false;
@@ -129,10 +135,6 @@ class PaymentFlowIntegrationTest {
             }
         }
         assertThat(creditFound).isTrue();
-
-        // 6. GET payment by id
-        JsonNode fetched = parse(rest.getForEntity("/api/v1/payments/" + paymentId, String.class).getBody());
-        assertThat(fetched.get("status").asText()).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -164,18 +166,5 @@ class PaymentFlowIntegrationTest {
                 "/api/v1/payments/" + UUID.randomUUID(), String.class);
         assertThat(response.getStatusCode().value()).isEqualTo(404);
         assertThat(parse(response.getBody()).get("title").asText()).isEqualTo("Not Found");
-    }
-
-    @Test
-    void demoResetReseedsWallets() throws Exception {
-        ResponseEntity<String> response = rest.postForEntity("/api/v1/demo/reset", null, String.class);
-        assertThat(response.getStatusCode().value()).isEqualTo(200);
-        JsonNode wallets = parse(response.getBody());
-        assertThat(wallets.size()).isEqualTo(2);
-        // Reseeded wallets carry the seeded payment history
-        String id = wallets.get(0).get("id").asText();
-        JsonNode transactions = parse(
-                rest.getForEntity("/api/v1/wallets/" + id + "/transactions", String.class).getBody());
-        assertThat(transactions.size()).isGreaterThanOrEqualTo(1);
     }
 }

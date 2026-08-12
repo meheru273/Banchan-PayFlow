@@ -1,6 +1,6 @@
 package com.payflow.payment.api.dto;
 
-import com.payflow.payment.domain.Wallet;
+import com.payflow.common.domain.Wallet;
 
 import java.math.BigDecimal;
 import java.time.Instant;

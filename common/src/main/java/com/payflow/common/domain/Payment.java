@@ -1,6 +1,8 @@
-package com.payflow.payment.domain;
+package com.payflow.common.domain;
 
+import com.payflow.common.crypto.AesGcmAttributeConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -36,7 +38,8 @@ public class Payment {
     @Column(name = "provider_ref", length = 80)
     private String providerRef;
 
-    /** Simulated card token. Stored plaintext in Tier 1; AES-GCM encrypted via an AttributeConverter in Tier 2. */
+    /** Simulated card token, AES-GCM encrypted at rest via the converter. Never a real card number. */
+    @Convert(converter = AesGcmAttributeConverter.class)
     @Column(name = "card_ref_encrypted", length = 512)
     private String cardRef;
 

@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: ledger-worker
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/payflow}
+    username: ${DATABASE_USER:payflow}
+    password: ${DATABASE_PASSWORD:payflow}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  # Migrations are owned by payment-service; the worker only validates.
+  flyway:
+    enabled: false
+  rabbitmq:
+    addresses: ${RABBITMQ_URL:amqp://guest:guest@localhost:5672}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 10s
+
+server:
+  port: ${PORT:8081}

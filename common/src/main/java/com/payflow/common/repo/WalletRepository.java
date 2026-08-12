@@ -1,6 +1,6 @@
-package com.payflow.payment.repo;
+package com.payflow.common.repo;
 
-import com.payflow.payment.domain.Wallet;
+import com.payflow.common.domain.Wallet;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

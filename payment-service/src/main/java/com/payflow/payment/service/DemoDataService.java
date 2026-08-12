@@ -1,12 +1,13 @@
 package com.payflow.payment.service;
 
+import com.payflow.common.domain.Wallet;
+import com.payflow.common.ledger.LedgerPostingService;
+import com.payflow.common.repo.IdempotencyRecordRepository;
+import com.payflow.common.repo.LedgerEntryRepository;
+import com.payflow.common.repo.PaymentRepository;
+import com.payflow.common.repo.WalletRepository;
 import com.payflow.payment.api.dto.CreatePaymentRequest;
 import com.payflow.payment.api.dto.WalletResponse;
-import com.payflow.payment.domain.Wallet;
-import com.payflow.payment.repo.IdempotencyRecordRepository;
-import com.payflow.payment.repo.LedgerEntryRepository;
-import com.payflow.payment.repo.PaymentRepository;
-import com.payflow.payment.repo.WalletRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -57,16 +58,17 @@ public class DemoDataService {
 
     private List<WalletResponse> seed() {
         walletRepository.save(new Wallet(
-                PaymentProcessor.TREASURY_OWNER, "GBP", new BigDecimal("1000000.00")));
+                LedgerPostingService.TREASURY_OWNER, "GBP", new BigDecimal("1000000.00")));
         Wallet jisoo = walletRepository.save(new Wallet("Jisoo Kim", "GBP", BigDecimal.ZERO));
         Wallet minho = walletRepository.save(new Wallet("Minho Park", "GBP", BigDecimal.ZERO));
 
-        // Seed through the real code path so demo data obeys the same invariants.
-        paymentProcessor.process(new CreatePaymentRequest(
+        // Seed through the real code path (completed synchronously — no
+        // provider round-trip at boot) so demo data obeys the same invariants.
+        paymentProcessor.processAndCompleteForSeed(new CreatePaymentRequest(
                 jisoo.getId(), new BigDecimal("42.50"), "GBP", "tok_visa_4242"));
-        paymentProcessor.process(new CreatePaymentRequest(
+        paymentProcessor.processAndCompleteForSeed(new CreatePaymentRequest(
                 jisoo.getId(), new BigDecimal("18.90"), "GBP", "tok_visa_4242"));
-        paymentProcessor.process(new CreatePaymentRequest(
+        paymentProcessor.processAndCompleteForSeed(new CreatePaymentRequest(
                 minho.getId(), new BigDecimal("77.00"), "GBP", "tok_mc_5100"));
 
         log.info("Seeded demo data: 2 customer wallets, 3 completed payments");

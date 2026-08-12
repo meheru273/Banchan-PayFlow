@@ -70,4 +70,53 @@ attempting the insert; the collision path only fires in true sub-millisecond rac
 **Goal:** make the payment flow asynchronous and production-shaped: a simulated provider
 confirms payments via an HMAC-signed webhook, completion publishes `payment.completed` to
 RabbitMQ, and a separate `ledger-worker` posts the ledger entries — plus JWT auth and AES-GCM
-encryption at rest. Entries below are appended as each step lands.
+encryption at rest.
+
+### Shared domain moved into `common`
+`ledger-worker` writes the same tables as the API, so entities, repositories and the ledger
+posting rules moved from `payment-service` to `common` — one source of truth both services
+compile against, instead of two mappings that could drift. This is what `common` was reserved
+for in Tier 1. `LedgerPostingService` carries the double-entry invariant and is deliberately
+idempotent (existing entries short-circuit) because RabbitMQ is at-least-once: a redelivered
+event must never double-book a wallet.
+
+### The flow went asynchronous
+`POST /payments` now creates a `PENDING` payment and returns. A `ProviderSimulator` stands in
+for a real provider, but honestly: after a short delay it calls back **over real HTTP** with a
+signed webhook to `/api/v1/webhooks/provider`. That handler verifies and publishes
+`payment.completed`; the worker posts the ledger and flips the payment to `COMPLETED`. The
+idempotency snapshot stores the `PENDING` response — replays return exactly what the original
+call returned, which is how Stripe behaves too.
+
+### Webhook security decisions
+Signature = HMAC-SHA256 over `timestamp + "." + body`, compared with `MessageDigest.isEqual`
+(constant-time — a plain `equals` leaks how many bytes matched through timing). The timestamp
+is checked against a ±5 min window *before* any crypto and is part of the signed content, so a
+captured webhook can't be replayed later or re-dated. Rejections are 401 problem details.
+
+### Messaging topology
+Durable topic exchange `payflow.events` → queue `ledger.payment.completed` (with
+`x-dead-letter-exchange`) → DLQ. Retries: 5 attempts, exponential backoff 1s→10s, then reject
+without requeue so a poison message lands in the DLQ instead of spinning forever. Declarations
+live once in `common` and are declared lazily by whichever service connects first — which is
+also why payment-service still boots with no broker configured.
+
+### Dev mode without a broker (and without Docker)
+`payflow.messaging.enabled=false` (the dev profile) makes the webhook handler post the ledger
+in-process through the same `LedgerPostingService` the worker uses. Same code path, same
+invariant, no RabbitMQ — the full create→webhook→ledger flow runs and is integration-tested on
+a machine with nothing installed but a JDK.
+
+### JWT auth, scoped deliberately small
+HS256 access + refresh tokens (refresh is single-purpose via a `token_use` claim). Reads and
+payment creation stay public — a portfolio demo that demands login is a demo nobody clicks —
+but destructive admin ops (`/demo/reset`) need the ADMIN role. No user table: the data model
+doesn't have one, so the single admin identity comes from env config, checked in constant time.
+
+### AES-GCM at rest via AttributeConverter
+The card reference column is encrypted transparently: AES-256-GCM, fresh random 12-byte IV per
+value (IV reuse breaks GCM), 128-bit tag, stored as base64(IV‖ciphertext). The key is env-only
+and may be raw base64 or any string (SHA-256-derived), so Render's generated secrets work.
+Reads that fail authentication (tampering, wrong key, or Tier 1's legacy plaintext rows)
+surface `null` rather than a 500 — a deliberate availability-over-strictness call, noted here
+honestly.

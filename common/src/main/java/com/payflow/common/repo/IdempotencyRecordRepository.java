@@ -1,6 +1,6 @@
-package com.payflow.payment.repo;
+package com.payflow.common.repo;
 
-import com.payflow.payment.domain.IdempotencyRecord;
+import com.payflow.common.domain.IdempotencyRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRecord, String> {

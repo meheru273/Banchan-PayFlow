@@ -1,6 +1,6 @@
-package com.payflow.payment.repo;
+package com.payflow.common.repo;
 
-import com.payflow.payment.domain.Payment;
+import com.payflow.common.domain.Payment;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.UUID;
