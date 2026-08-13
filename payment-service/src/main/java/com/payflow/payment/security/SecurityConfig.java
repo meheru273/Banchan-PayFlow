@@ -52,6 +52,7 @@ public class SecurityConfig {
         jwtConverter.setJwtGrantedAuthoritiesConverter(authorities);
 
         http.csrf(AbstractHttpConfigurer::disable)
+                .cors(org.springframework.security.config.Customizer.withDefaults())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/demo/**").hasRole("ADMIN")

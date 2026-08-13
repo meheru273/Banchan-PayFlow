@@ -1,4 +1,8 @@
 target/
+node_modules/
+.next/
+out/
+.env.local
 .idea/
 *.iml
 .vscode/

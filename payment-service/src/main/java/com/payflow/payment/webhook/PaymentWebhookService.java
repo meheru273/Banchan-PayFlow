@@ -12,6 +12,7 @@ import com.payflow.payment.messaging.PaymentEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -80,7 +81,14 @@ public class PaymentWebhookService {
                 eventPublisher.publishPaymentCompleted(payment);
             } else {
                 // No broker configured (dev profile): post the ledger in-process.
-                ledgerPostingService.postForPayment(payment.getId());
+                try {
+                    ledgerPostingService.postForPayment(payment.getId());
+                } catch (ObjectOptimisticLockingFailureException e) {
+                    // Two deliveries of the same confirmation raced; the winner
+                    // already posted and the wallet @Version check stopped a
+                    // double-booking. A duplicate delivery is a 200, not an error.
+                    log.info("Concurrent webhook delivery for payment {} — already posted", payment.getId());
+                }
             }
         } else {
             ledgerPostingService.markFailed(payment.getId());

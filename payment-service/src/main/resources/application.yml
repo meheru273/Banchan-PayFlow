@@ -20,6 +20,8 @@ springdoc:
     path: /swagger-ui.html
 
 payflow:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   messaging:
     # false = post ledger entries in-process instead of via RabbitMQ
     # (the no-broker dev mode; the dev profile turns this off).
