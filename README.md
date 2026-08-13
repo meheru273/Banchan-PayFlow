@@ -1,5 +1,8 @@
 # PayFlow
 
+![CI](https://github.com/meheru273/Banchan-PayFlow/actions/workflows/ci.yml/badge.svg)
+![Coverage](.github/badges/jacoco.svg)
+
 A Spring Boot payment + double-entry wallet service: create a payment, a simulated provider
 confirms it through an HMAC-signed webhook, a `payment.completed` event goes through RabbitMQ,
 and a separate worker posts balanced DEBIT/CREDIT ledger entries whose signed sum is always
@@ -41,7 +44,7 @@ a real payment system has.
 |---|---|---|
 | 1 | REST API, PostgreSQL + Flyway, idempotent payment creation, RFC 7807 errors, Swagger, Docker, Render deploy | ✅ **live** (Render + Neon) |
 | 2 | JWT auth, HMAC-SHA256 webhooks, RabbitMQ + ledger-worker + DLQ, AES-GCM at rest | ✅ **live** (Render + CloudAMQP) |
-| 3 | Testcontainers + REST Assured + JaCoCo + CI badge, Next.js dashboard on Vercel | ⏳ not started |
+| 3 | Testcontainers + REST Assured + JaCoCo + CI badge, Next.js dashboard on Vercel | ✅ built, dashboard deploy pending |
 
 ## Run it locally
 
@@ -62,6 +65,14 @@ mvn -pl payment-service spring-boot:run -Dspring-boot.run.profiles=dev
 
 Demo wallets are seeded on first boot. Admin login for the protected endpoints in dev:
 `admin` / `demo-admin`.
+
+The dashboard:
+
+```bash
+cd web && npm install && npm run dev                  # http://localhost:3000
+```
+
+It points at `http://localhost:8080` by default (`NEXT_PUBLIC_API_BASE_URL` overrides).
 
 ## How the interesting parts work
 
@@ -139,9 +150,16 @@ GET  /health
 mvn verify
 ```
 
-Unit tests cover the ledger invariant, idempotency contract, HMAC signature scheme and the
-AES-GCM converter (round-trip, tamper detection, fresh IVs). Integration tests drive the full
-async HTTP flow — create → provider webhook → ledger posted — plus tampered/stale webhook
-rejection and the JWT auth flow, against Flyway-migrated H2 in PostgreSQL mode. Testcontainers
-against real Postgres + RabbitMQ arrive in Tier 3 alongside REST Assured and a JaCoCo coverage
-badge.
+Four layers:
+
+- **Unit** — ledger invariant, idempotency contract, HMAC signature scheme, AES-GCM converter
+  (round-trip, tamper detection, fresh IVs).
+- **API (REST Assured)** — happy path, byte-identical idempotent replay, key-reuse conflict,
+  bad webhook signature.
+- **Integration (H2 PostgreSQL mode)** — the full async HTTP flow (create → provider webhook →
+  ledger posted), tampered/stale webhook rejection, the JWT auth flow.
+- **Integration (Testcontainers, `*IT`)** — real PostgreSQL + real RabbitMQ in Docker: Flyway
+  migrations against actual Postgres, the event through an actual broker, the worker consuming
+  and posting, and a poison message landing in the DLQ after retries. These skip automatically
+  on machines without Docker and run in CI, where the pipeline is
+  build → test → coverage badge → Docker images.

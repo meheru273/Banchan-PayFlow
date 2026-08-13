@@ -4,15 +4,49 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
+
+      # Runs unit tests, REST Assured API tests, and the Testcontainers
+      # integration suites against real Postgres + RabbitMQ (Docker is
+      # available on GitHub runners), producing JaCoCo reports.
       - name: Build and test
-        run: mvn -B verify
+        run: mvn -B --no-transfer-progress verify
+
+      - name: Generate coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: cicirello/jacoco-badge-generator@v2
+        with:
+          jacoco-csv-file: >
+            common/target/site/jacoco/jacoco.csv
+            payment-service/target/site/jacoco/jacoco.csv
+            ledger-worker/target/site/jacoco/jacoco.csv
+          badges-directory: .github/badges
+          generate-coverage-badge: true
+
+      - name: Commit coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges
+          # "[skip render]" keeps a badge-only commit from triggering a deploy
+          git diff --staged --quiet || git commit -m "chore: update coverage badge [skip ci] [skip render]"
+          git push
+
+      - name: Build Docker images
+        run: |
+          docker build -f payment-service/Dockerfile -t payflow-api .
+          docker build -f ledger-worker/Dockerfile -t payflow-worker .

@@ -67,7 +67,7 @@ attempting the insert; the collision path only fires in true sub-millisecond rac
 
 ## Tier 2 — messaging + security (started 13 Aug 2026) 🚧
 
-**Goal:** make the payment flow asynchronous and production-shaped: a simulated provider
+**Goal (Tier 2):** make the payment flow asynchronous and production-shaped: a simulated provider
 confirms payments via an HMAC-signed webhook, completion publishes `payment.completed` to
 RabbitMQ, and a separate `ledger-worker` posts the ledger entries — plus JWT auth and AES-GCM
 encryption at rest.
@@ -140,3 +140,39 @@ and may be raw base64 or any string (SHA-256-derived), so Render's generated sec
 Reads that fail authentication (tampering, wrong key, or Tier 1's legacy plaintext rows)
 surface `null` rather than a 500 — a deliberate availability-over-strictness call, noted here
 honestly.
+
+---
+
+## Tier 3 — tests + dashboard (13 Aug 2026) 🚧
+
+### Testcontainers, honestly scoped for a Docker-less laptop
+The `*IT` suites run real PostgreSQL + real RabbitMQ via Testcontainers with
+`disabledWithoutDocker = true`: they skip on this machine (no Docker) and run for real in CI,
+wired through the failsafe plugin so `mvn verify` picks them up. payment-service's IT proves
+Flyway against genuine Postgres and the event through a genuine broker (the test plays the
+worker's role using the same posting service); ledger-worker's IT proves consumption, balanced
+posting, and that a poison message dead-letters after two fast retries. The worker IT lets
+Hibernate create its schema — migrations belong to payment-service, and that combination is
+covered by the other IT.
+
+### REST Assured + JaCoCo + CI
+The brief's REST Assured suite covers the happy path, byte-identical replay, key-reuse 409 and
+the tampered webhook. JaCoCo instruments all modules; CI generates a coverage badge and commits
+it back with `[skip ci][skip render]` so a badge commit never triggers deploys, then builds both
+Docker images.
+
+### A race the new tests caught before production could
+In embedded mode the test's manually-signed webhook raced the simulator's webhook for the same
+payment: both saw PENDING, one posted, the loser threw an optimistic-lock failure → 500. The
+wallet `@Version` check had already prevented the actual double-booking (the invariant held);
+the fix was to treat a lost race as "duplicate delivery, already posted" and answer 200 — which
+is what a real provider expects, since they retry on 5xx and would have kept hammering.
+
+### The dashboard tells the queue's story
+Next.js 15 App Router + Tailwind v4, hand-scaffolded in `web/` (no boilerplate). Design
+decisions: payments visibly travel PENDING → COMPLETED via polling (honest — no fake
+websockets); a **"Replay last"** button re-sends the identical request + Idempotency-Key so the
+409-vs-replay behaviour is demonstrable by anyone; demo reset does the JWT login inline; a
+wake-up banner explains free-tier cold starts instead of looking broken. CORS on the API is
+env-driven (`CORS_ALLOWED_ORIGINS`) with `Idempotency-Replayed` in the exposed headers — the
+browser can't see the replay proof without it.
